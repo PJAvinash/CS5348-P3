@@ -4,9 +4,9 @@
 #include <semaphore.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <stdatomic.h>
+// #include <stdatomic.h>
 
-atomic_int atomicCounter = 0;
+// atomic_int atomicCounter = 0;
 
 typedef enum
 {
@@ -158,8 +158,8 @@ void *student_thread(void *args)
         if (insert_success)
         {
             sem_post(params->chair_occupied);
-            atomic_fetch_add(&atomicCounter, 1);
-            printf("S: %d\n", atomic_load(&atomicCounter));
+            // atomic_fetch_add(&atomicCounter, 1);
+            // printf("S: %d\n", atomic_load(&atomicCounter));
             printf("S: Student %lu takes a seat. Empty chairs = %d\n", st->id, params->buffer->open_positions);
             st->state = WAITING;
             while (st->state == WAITING)
@@ -211,11 +211,11 @@ void *tutor_thread(void *args)
     while ((*params->st_threads_left))
     {
         sem_wait(params->chair_occupied);
-        atomic_fetch_sub(&atomicCounter, 1);
-        printf("T: %d\n", atomic_load(&atomicCounter));
-        if(atomic_load(&atomicCounter) < -1){
-            exit(0);
-        }
+        // atomic_fetch_sub(&atomicCounter, 1);
+        // printf("T: %d\n", atomic_load(&atomicCounter));
+        // if(atomic_load(&atomicCounter) < -1){
+        //     exit(0);
+        // }
         struct student *next_st = pop(params->buffer);
         if (next_st != NULL)
         {
