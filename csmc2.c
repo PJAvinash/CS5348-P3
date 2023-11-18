@@ -4,6 +4,7 @@
 #include <semaphore.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <limits.h>
 // #include <stdatomic.h>
 
 // atomic_int atomicCounter = 0;
@@ -100,7 +101,7 @@ struct student *pop(struct student_wait_buffer *buffer)
     if (buffer->open_positions < buffer->size)
     {
         int i;
-        int min_help = INT32_MAX;
+        int min_help = INT_MAX;
         int pick = -1;
         for (i = 0; i < buffer->size; i++)
         {
