@@ -138,6 +138,23 @@ struct student *pop(struct student_wait_buffer *buffer)
 // void* coordinator_thread(void* args){
 
 // }
+
+int coordinator(struct student_wait_buffer* buffer,struct student* arrived_student,pthread_mutex_t* snapshot_mutex,int* total_requests_ptr,sem_t* chair_occupied)
+{
+    int insert_success = insert(buffer,arrived_student);
+    if(insert_success){
+         pthread_mutex_lock(snapshop_mutex);
+         (*total_requests_ptr)++;
+         int total_requests = (*total_requests_ptr);
+         int waiting_students = buffer->size - buffer->open_positions;
+         pthread_mutex_unlock(snapshop_mutex);
+         sem_post(chair_occupied);
+         printf("C: Student %lu with priority %d added to the queue. Waiting students now = %d. Total requests = %d\n", st->id, st->help, waiting_students, tr);
+    }
+    return insert_success;
+};
+
+
 /**
  * while(help<help_max){
  * sem_wait(chair_available)
@@ -171,17 +188,17 @@ void *student_thread(void *args)
     while (st->help < params->help_max)
     {
         sem_wait(params->chair_available);
-        int insert_success = insert(params->buffer, st);
+        //int insert_success = insert(params->buffer, st);
+        int insert_success =  coordinator(params->buffer,params->st,params->snapshop_mutex,params->total_requests,params->chair_occupied);
         if (insert_success)
         {
-            pthread_mutex_lock(params->snapshop_mutex);
-            (*params->total_requests)++;
-            int total_requests = (*params->total_requests);
-            int waiting_students = params->buffer->size - params->buffer->open_positions;
-            pthread_mutex_unlock(params->snapshop_mutex);
-            sem_post(params->chair_occupied);
+            // pthread_mutex_lock(params->snapshop_mutex);
+            // (*params->total_requests)++;
+            // int total_requests = (*params->total_requests);
+            // int waiting_students = params->buffer->size - params->buffer->open_positions;
+            // pthread_mutex_unlock(params->snapshop_mutex);
+            // sem_post(params->chair_occupied);
             printf("S: Student %lu takes a seat. Empty chairs = %d\n", st->id, params->buffer->open_positions);
-            printf("C: Student %lu with priority %d added to the queue. Waiting students now = %d. Total requests = %d\n", st->id, st->help, waiting_students, total_requests);
             st->state = WAITING;
             while (st->state == WAITING)
             {
