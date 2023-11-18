@@ -158,6 +158,7 @@ struct student_thread_params
     int *total_requests;
     int help_max;
 };
+
 void *student_thread(void *args)
 {
     struct student_thread_params *params = (struct student_thread_params *)args;
@@ -307,6 +308,7 @@ void simulatecsms(int students, int tutors, int chairs, int helplimit)
     sem_destroy(&chair_occupied);
     sem_destroy(&chair_available);
 }
+
 int main(int argc, char *argv[])
 {
     if (argc != 5)
