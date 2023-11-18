@@ -5,9 +5,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <limits.h>
-// #include <stdatomic.h>
-
-// atomic_int atomicCounter = 0;
 
 typedef enum
 {
@@ -75,11 +72,12 @@ int insert(struct student_wait_buffer *buffer, struct student *input_student)
     int is_success = 0;
     pthread_mutex_lock(buffer->lock);
     // find the open position
+
     if (buffer->open_positions > 0)
     {
         int i;
         // linear search
-        for (i = 0; (i < buffer->size) && (buffer->is_open[i] == 0) && (is_success == 0); i++)
+        for (i = 0; (i < buffer->size) && (is_success == 0); i++)
         {
             if (buffer->is_open[i] == 1)
             {
@@ -126,6 +124,20 @@ struct student *pop(struct student_wait_buffer *buffer)
     return next_std_ptr;
 }
 
+// struct coordinator_thread_params{
+//     struct student_wait_buffer *buffer;
+//     sem_t* notify_coorinator;
+//     sem_t* notify_student;
+//     pthread_mutex_t *next_student_mutex;
+//     struct student* next_student;
+//     pthread_mutex_t *snapshop_mutex;
+//     int *total_requests;
+//     int *insert_response;
+
+// }
+// void* coordinator_thread(void* args){
+
+// }
 /**
  * while(help<help_max){
  * sem_wait(chair_available)
@@ -142,6 +154,8 @@ struct student_thread_params
     sem_t *chair_occupied;
     pthread_mutex_t *counter_mutex;
     int *st_threads_left;
+    pthread_mutex_t *snapshop_mutex;
+    int *total_requests;
     int help_max;
 };
 void *student_thread(void *args)
@@ -152,16 +166,21 @@ void *student_thread(void *args)
     st->help = 0;
     st->state = PROGRAMMING;
     st->tutor_id = -1;
+
     while (st->help < params->help_max)
     {
         sem_wait(params->chair_available);
         int insert_success = insert(params->buffer, st);
         if (insert_success)
         {
+            pthread_mutex_lock(params->snapshop_mutex);
+            (*params->total_requests)++;
+            int total_requests = (*params->total_requests);
+            int waiting_students = params->buffer->size - params->buffer->open_positions;
+            pthread_mutex_unlock(params->snapshop_mutex);
             sem_post(params->chair_occupied);
-            // atomic_fetch_add(&atomicCounter, 1);
-            // printf("S: %d\n", atomic_load(&atomicCounter));
             printf("S: Student %lu takes a seat. Empty chairs = %d\n", st->id, params->buffer->open_positions);
+            printf("C: Student %lu with priority %d added to the queue. Waiting students now = %d. Total requests = %d\n", st->id, st->help, waiting_students, total_requests);
             st->state = WAITING;
             while (st->state == WAITING)
             {
@@ -174,16 +193,20 @@ void *student_thread(void *args)
             printf("S: Student %lu received help from Tutor %lu.\n", st->id, st->tutor_id);
             st->tutor_id = -1;
         }
-        // else
-        // {
-        //     printf("S: Student %lu found no empty chair,Will try later\n", st->id);
-        // }
+        else
+        {
+            printf("S: Student %lu found no empty chair,Will try later\n", st->id);
+        }
         // go back to programming
         usleep(2000);
     }
     pthread_mutex_lock(params->counter_mutex);
     (*params->st_threads_left)--;
+    int threads_left = (*params->st_threads_left);
     pthread_mutex_unlock(params->counter_mutex);
+    if(threads_left == 0){
+        exit(0);
+    }
     return NULL;
 }
 
@@ -203,46 +226,63 @@ struct tutor_thread_params
     sem_t *chair_occupied;
     pthread_mutex_t *counter_mutex;
     int *st_threads_left;
+    pthread_mutex_t *snapshop_mutex;
+    int *total_sessions;
+    int *active_sessions;
 };
 
 void *tutor_thread(void *args)
 {
     struct tutor_thread_params *params = (struct tutor_thread_params *)args;
     unsigned long thread_id = (unsigned long)pthread_self();
-    while ((*params->st_threads_left))
+    while (1)
     {
+        pthread_mutex_lock(params->counter_mutex);
+        if (*params->st_threads_left == 0)
+        {
+            pthread_mutex_unlock(params->counter_mutex);
+            break;
+        }
+        pthread_mutex_unlock(params->counter_mutex);
         sem_wait(params->chair_occupied);
-        // atomic_fetch_sub(&atomicCounter, 1);
-        // printf("T: %d\n", atomic_load(&atomicCounter));
-        // if(atomic_load(&atomicCounter) < -1){
-        //     exit(0);
-        // }
         struct student *next_st = pop(params->buffer);
         if (next_st != NULL)
         {
+            pthread_mutex_lock(params->snapshop_mutex);
+            int total_sessions = (++*params->total_sessions);
+            int active_sessions = (++*params->active_sessions);
+            pthread_mutex_unlock(params->snapshop_mutex);
             sem_post(params->chair_available);
             next_st->state = BEING_TUTORED;
             next_st->help = next_st->help + 1;
             next_st->tutor_id = thread_id;
-            printf("T: Student %lu tutored by %lu\n", next_st->id, thread_id);
+            printf("T: Student %lu tutored by %lu. Students tutored now = %d. Total sessions tutored =%d\n", next_st->id, thread_id, active_sessions, total_sessions);
             usleep(200);                  // teach for 0.2ms;
             next_st->state = PROGRAMMING; // need a mutex ??
+            pthread_mutex_lock(params->snapshop_mutex);
+            active_sessions = (--*params->active_sessions);
+            pthread_mutex_unlock(params->snapshop_mutex);
         }
     }
     return NULL;
 }
 void simulatecsms(int students, int tutors, int chairs, int helplimit)
 {
-    sem_t chair_available; //= sem_open("chair_available", O_CREAT | O_EXCL, 0644, chairs);
+    sem_t chair_available;
     sem_t chair_occupied;
-    sem_init(&chair_occupied,0,0);
+    sem_init(&chair_occupied, 0, 0);
     sem_init(&chair_available, 0, chairs);
 
-    pthread_mutex_t st_countex_mutex = PTHREAD_MUTEX_INITIALIZER;
     int st_threads_left = students;
+    pthread_mutex_t st_countex_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t snapshop_mutex = PTHREAD_MUTEX_INITIALIZER;
+    int total_requests = 0;
+    int total_sessions = 0;
+    int active_sessions = 0;
+
     struct student_wait_buffer *swb = initialize_wait_buffer(chairs);
-    struct student_thread_params st_params = {swb, &chair_available, &chair_occupied, &st_countex_mutex, &st_threads_left, helplimit};
-    struct tutor_thread_params tt_params = {swb, &chair_available, &chair_occupied, &st_countex_mutex, &st_threads_left};
+    struct student_thread_params st_params = {swb, &chair_available, &chair_occupied, &st_countex_mutex, &st_threads_left, &snapshop_mutex, &total_requests, helplimit};
+    struct tutor_thread_params tt_params = {swb, &chair_available, &chair_occupied, &st_countex_mutex, &st_threads_left, &snapshop_mutex, &total_sessions, &active_sessions};
     pthread_t student_threads[students];
     pthread_t tutor_threads[tutors];
     int i;
@@ -266,8 +306,6 @@ void simulatecsms(int students, int tutors, int chairs, int helplimit)
     destroy_wait_buffer(swb);
     sem_destroy(&chair_occupied);
     sem_destroy(&chair_available);
-    // sem_unlink("chair_occupied");
-    // sem_unlink("chair_available");
 }
 int main(int argc, char *argv[])
 {

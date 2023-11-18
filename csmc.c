@@ -248,6 +248,10 @@ void *tutor_thread(void *args)
 void simulatecsms(int students, int tutors, int chairs, int helplimit)
 {
     printf("1\n");
+    sem_t chair_occupied;
+    sem_t chair_available;
+    sem_t waiting_for_tutor;
+    sem_t 
     sem_t *chair_occupied = sem_open("chair_occupied", O_CREAT | O_EXCL, 0644, 0);
     sem_t *chair_available = sem_open("chair_available", O_CREAT | O_EXCL, 0644, chairs);
     sem_t *waiting_for_tutor = sem_open("waiting_for_tutor", O_CREAT | O_EXCL, 0644, 0);
