@@ -4,6 +4,9 @@
 #include <semaphore.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <stdatomic.h>
+
+atomic_int atomicCounter = 0;
 
 typedef enum
 {
@@ -75,7 +78,7 @@ int insert(struct student_wait_buffer *buffer, struct student *input_student)
     {
         int i;
         // linear search
-        for (i = 0; (i < buffer->size) && (buffer->is_open[i] == 0); i++)
+        for (i = 0; (i < buffer->size) && (buffer->is_open[i] == 0) && (is_success == 0); i++)
         {
             if (buffer->is_open[i] == 1)
             {
@@ -83,7 +86,6 @@ int insert(struct student_wait_buffer *buffer, struct student *input_student)
                 buffer->is_open[i] = 0;
                 buffer->open_positions = buffer->open_positions - 1;
                 is_success = 1;
-                break;
             }
         }
     }
@@ -149,13 +151,15 @@ void *student_thread(void *args)
     st->help = 0;
     st->state = PROGRAMMING;
     st->tutor_id = -1;
-    while (st->help <= params->help_max)
+    while (st->help < params->help_max)
     {
         sem_wait(params->chair_available);
         int insert_success = insert(params->buffer, st);
         if (insert_success)
         {
             sem_post(params->chair_occupied);
+            atomic_fetch_add(&atomicCounter, 1);
+            printf("S: %d\n", atomic_load(&atomicCounter));
             printf("S: Student %lu takes a seat. Empty chairs = %d\n", st->id, params->buffer->open_positions);
             st->state = WAITING;
             while (st->state == WAITING)
@@ -207,6 +211,11 @@ void *tutor_thread(void *args)
     while ((*params->st_threads_left))
     {
         sem_wait(params->chair_occupied);
+        atomic_fetch_sub(&atomicCounter, 1);
+        printf("T: %d\n", atomic_load(&atomicCounter));
+        if(atomic_load(&atomicCounter) < -1){
+            exit(0);
+        }
         struct student *next_st = pop(params->buffer);
         if (next_st != NULL)
         {
@@ -223,13 +232,16 @@ void *tutor_thread(void *args)
 }
 void simulatecsms(int students, int tutors, int chairs, int helplimit)
 {
-    sem_t *chair_occupied = sem_open("chair_occupied", O_CREAT | O_EXCL, 0644, 0);
-    sem_t *chair_available = sem_open("chair_available", O_CREAT | O_EXCL, 0644, chairs);
+    sem_t chair_available; //= sem_open("chair_available", O_CREAT | O_EXCL, 0644, chairs);
+    sem_t chair_occupied;
+    sem_init(&chair_occupied,0,0);
+    sem_init(&chair_available, 0, chairs);
+
     pthread_mutex_t st_countex_mutex = PTHREAD_MUTEX_INITIALIZER;
     int st_threads_left = students;
     struct student_wait_buffer *swb = initialize_wait_buffer(chairs);
-    struct student_thread_params st_params = {swb, chair_available, chair_occupied, &st_countex_mutex, &st_threads_left, helplimit};
-    struct tutor_thread_params tt_params = {swb, chair_available, chair_occupied, &st_countex_mutex, &st_threads_left};
+    struct student_thread_params st_params = {swb, &chair_available, &chair_occupied, &st_countex_mutex, &st_threads_left, helplimit};
+    struct tutor_thread_params tt_params = {swb, &chair_available, &chair_occupied, &st_countex_mutex, &st_threads_left};
     pthread_t student_threads[students];
     pthread_t tutor_threads[tutors];
     int i;
@@ -251,10 +263,10 @@ void simulatecsms(int students, int tutors, int chairs, int helplimit)
         pthread_join(tutor_threads[i], NULL);
     }
     destroy_wait_buffer(swb);
-    sem_close(chair_occupied);
-    sem_close(chair_available);
-    sem_unlink("chair_occupied");
-    sem_unlink("chair_available");
+    sem_destroy(&chair_occupied);
+    sem_destroy(&chair_available);
+    // sem_unlink("chair_occupied");
+    // sem_unlink("chair_available");
 }
 int main(int argc, char *argv[])
 {
