@@ -213,10 +213,10 @@ void *student_thread(void *args)
         //int insert_success = insert(params->buffer, st);
         pthread_mutex_lock(params->coordinator_access);
         (*params->coordinator_input) = st;
+        int empty_chairs = params->buffer->open_positions;
         sem_post(params->student_to_coordinator);
         sem_wait(params->coordinator_to_student);
         int insert_success = (*params->coordinator_thread_return);
-        int empty_chairs = params->buffer->open_positions;
         (*params->coordinator_input) = NULL;
         pthread_mutex_unlock(params->coordinator_access);
         //int insert_success =  coordinator(params->buffer,st,params->snapshop_mutex,params->total_requests,params->chair_occupied);
