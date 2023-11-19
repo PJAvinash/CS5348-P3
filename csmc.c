@@ -228,7 +228,7 @@ void *student_thread(void *args)
             // int waiting_students = params->buffer->size - params->buffer->open_positions;
             // pthread_mutex_unlock(params->snapshop_mutex);
             // sem_post(params->chair_occupied);
-            printf("S: Student %lu takes a seat. Empty chairs = %d\n", st->id, empty_chairs);
+            printf("S: Student %lu takes a seat. Empty chairs = %d\n", st->id, empty_chairs-1);
             st->state = WAITING;
             while (st->state == WAITING)
             {
