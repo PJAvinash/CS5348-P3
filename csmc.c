@@ -139,21 +139,38 @@ struct student *pop(struct student_wait_buffer *buffer)
 
 // }
 
-int coordinator(struct student_wait_buffer* buffer,struct student* arrived_student,pthread_mutex_t* snapshot_mutex,int* total_requests_ptr,sem_t* chair_occupied)
-{
-    int insert_success = insert(buffer,arrived_student);
-    if(insert_success){
-         pthread_mutex_lock(snapshot_mutex);
-         (*total_requests_ptr)++;
-         int total_requests = (*total_requests_ptr);
-         int waiting_students = buffer->size - buffer->open_positions;
-         pthread_mutex_unlock(snapshot_mutex);
-         sem_post(chair_occupied);
-         printf("C: Student %lu with priority %d added to the queue. Waiting students now = %d. Total requests = %d\n", arrived_student->id, arrived_student->help, waiting_students, total_requests);
-    }
-    return insert_success;
+struct coordinator_thread_params{
+    struct student_wait_buffer* buffer;
+    struct student** arrived_student;
+    pthread_mutex_t* snapshot_mutex;
+    int* total_requests_ptr;
+    sem_t* chair_occupied;
+    sem_t* student_to_coordinator;
+    sem_t* coordinator_to_student;
+    int* coordinator_thread_return;
 };
 
+void *coordinator_thread(void *args)
+{
+    while (1)
+    {
+        struct coordinator_thread_params *params = (struct coordinator_thread_params *)args;
+        sem_wait(params->student_to_coordinator);
+        int insert_success = insert(params->buffer, *params->arrived_student);
+        if (insert_success)
+        {
+            pthread_mutex_lock(params->snapshot_mutex);
+            (*params->total_requests_ptr)++;
+            int total_requests = (*params->total_requests_ptr);
+            int waiting_students = params->buffer->size - params->buffer->open_positions;
+            pthread_mutex_unlock(params->snapshot_mutex);
+            sem_post(params->chair_occupied);
+            printf("C: Student %lu with priority %d added to the queue. Waiting students now = %d. Total requests = %d\n", (*params->arrived_student)->id, (*params->arrived_student)->help, waiting_students, total_requests);
+        }
+        params->coordinator_thread_return = insert_success;
+        sem_post(params->coordinator_to_student);
+    }
+};
 
 /**
  * while(help<help_max){
@@ -173,6 +190,11 @@ struct student_thread_params
     int *st_threads_left;
     pthread_mutex_t *snapshop_mutex;
     int *total_requests;
+    pthread_mutex_t *coordinator_access;
+    sem_t* student_to_coordinator;
+    sem_t* coordinator_to_student;
+    struct student** coordinator_input;
+    int* coordinator_thread_return;
     int help_max;
 };
 
@@ -189,7 +211,15 @@ void *student_thread(void *args)
     {
         sem_wait(params->chair_available);
         //int insert_success = insert(params->buffer, st);
-        int insert_success =  coordinator(params->buffer,st,params->snapshop_mutex,params->total_requests,params->chair_occupied);
+        pthread_mutex_lock(params->coordinator_access);
+        (*params->coordinator_input) = st;
+        sem_post(params->student_to_coordinator);
+        sem_wait(params->coordinator_to_student);
+        int insert_success = (*params->coordinator_thread_return);
+        int empty_chairs = params->buffer->open_positions;
+        (*params->coordinator_input) = NULL;
+        pthread_mutex_unlock(params->coordinator_access);
+        //int insert_success =  coordinator(params->buffer,st,params->snapshop_mutex,params->total_requests,params->chair_occupied);
         if (insert_success)
         {
             // pthread_mutex_lock(params->snapshop_mutex);
@@ -288,26 +318,38 @@ void simulatecsms(int students, int tutors, int chairs, int helplimit)
 {
     sem_t chair_available;
     sem_t chair_occupied;
+    sem_t student_to_coordinator;
+    sem_t coordinator_to_student;
     sem_init(&chair_occupied, 0, 0);
     sem_init(&chair_available, 0, chairs);
+    sem_init(&student_to_coordinator,0,0);
+    sem_init(&coordinator_to_student,0,0);
 
     int st_threads_left = students;
     pthread_mutex_t st_countex_mutex = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_t snapshop_mutex = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t coordinator_access = PTHREAD_MUTEX_INITIALIZER;
     int total_requests = 0;
     int total_sessions = 0;
     int active_sessions = 0;
+    int coordinator_thread_return = 0;
 
     struct student_wait_buffer *swb = initialize_wait_buffer(chairs);
-    struct student_thread_params st_params = {swb, &chair_available, &chair_occupied, &st_countex_mutex, &st_threads_left, &snapshop_mutex, &total_requests, helplimit};
+    struct student* coordinator_input = NULL;
+
+    struct student_thread_params st_params = {swb, &chair_available, &chair_occupied, &st_countex_mutex, &st_threads_left, &snapshop_mutex, &total_requests,&coordinator_access,&student_to_coordinator,&coordinator_to_student,&coordinator_input,&coordinator_thread_return,helplimit};
     struct tutor_thread_params tt_params = {swb, &chair_available, &chair_occupied, &st_countex_mutex, &st_threads_left, &snapshop_mutex, &total_sessions, &active_sessions};
+    struct coordinator_thread_params ct_params = {swb,&coordinator_input,&snapshop_mutex,&total_requests,&chair_occupied,&student_to_coordinator,&coordinator_to_student,&coordinator_thread_return};
+    
     pthread_t student_threads[students];
     pthread_t tutor_threads[tutors];
+    pthread_t coordinator_thread_id;
     int i;
     for (i = 0; i < students; i++)
     {
         pthread_create(&student_threads[i], NULL, student_thread, (void *)&st_params);
     }
+    pthread_create(&coordinator_thread_id,NULL,coordinator_thread,(void*)&ct_params);
     for (i = 0; i < tutors; i++)
     {
         pthread_create(&tutor_threads[i], NULL, tutor_thread, (void *)&tt_params);
@@ -321,6 +363,7 @@ void simulatecsms(int students, int tutors, int chairs, int helplimit)
     {
         pthread_join(tutor_threads[i], NULL);
     }
+    pthread_join(coordinator_thread_id,NULL);
     destroy_wait_buffer(swb);
     sem_destroy(&chair_occupied);
     sem_destroy(&chair_available);
