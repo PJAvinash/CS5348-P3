@@ -162,14 +162,9 @@ struct student *pop(struct student_wait_buffer *buffer)
             buffer->open_positions = buffer->open_positions + 1;
         }
     }
-    else
-    {
-        printf("pop open_positions:%d\n", buffer->open_positions);
-    }
     pthread_mutex_unlock(buffer->lock);
     return next_std_ptr;
 }
-
 
 struct coordinator_thread_params
 {
@@ -248,12 +243,12 @@ struct student_thread_params
  * This function represents the behavior of a student in the Concurrent Student Management System.
  * Each student thread executes this function independently. The student creates a struct representing
  * themselves and enters a loop to request help until the maximum help limit is reached.
- * 
+ *
  * In each iteration, the student tries to find an available chair by interacting with the coordinator.
  * If successful, the student takes a seat and enters a waiting state. After being tutored, the student
  * returns to the programming state and repeats the process until the maximum help limit is reached.
  * If no chair is available, the student prints a message and tries again later.
- * 
+ *
  * Parameters:
  *   - args: A pointer to a struct containing thread-specific parameters (struct student_thread_params).
  *
@@ -314,7 +309,6 @@ void *student_thread(void *args)
     }
     return NULL;
 }
-
 
 struct tutor_thread_params
 {
@@ -385,7 +379,7 @@ void *tutor_thread(void *args)
             next_st->tutor_id = thread_id;
             printf("T: Student %lu tutored by %lu. Students tutored now = %d. Total sessions tutored =%d\n", next_st->id, thread_id, active_sessions, total_sessions);
             usleep(TUTORING_TIME); // teach for 0.2ms;
-            next_st->state = PROGRAMMING; 
+            next_st->state = PROGRAMMING;
             pthread_mutex_lock(params->snapshop_mutex);
             active_sessions = (--*params->active_sessions);
             pthread_mutex_unlock(params->snapshop_mutex);
