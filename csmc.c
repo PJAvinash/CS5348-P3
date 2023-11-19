@@ -143,13 +143,13 @@ int coordinator(struct student_wait_buffer* buffer,struct student* arrived_stude
 {
     int insert_success = insert(buffer,arrived_student);
     if(insert_success){
-         pthread_mutex_lock(snapshop_mutex);
+         pthread_mutex_lock(snapshot_mutex);
          (*total_requests_ptr)++;
          int total_requests = (*total_requests_ptr);
          int waiting_students = buffer->size - buffer->open_positions;
-         pthread_mutex_unlock(snapshop_mutex);
+         pthread_mutex_unlock(snapshot_mutex);
          sem_post(chair_occupied);
-         printf("C: Student %lu with priority %d added to the queue. Waiting students now = %d. Total requests = %d\n", st->id, st->help, waiting_students, tr);
+         printf("C: Student %lu with priority %d added to the queue. Waiting students now = %d. Total requests = %d\n", arrived_student->id, arrived_student->help, waiting_students, total_requests);
     }
     return insert_success;
 };
@@ -189,7 +189,7 @@ void *student_thread(void *args)
     {
         sem_wait(params->chair_available);
         //int insert_success = insert(params->buffer, st);
-        int insert_success =  coordinator(params->buffer,params->st,params->snapshop_mutex,params->total_requests,params->chair_occupied);
+        int insert_success =  coordinator(params->buffer,st,params->snapshop_mutex,params->total_requests,params->chair_occupied);
         if (insert_success)
         {
             // pthread_mutex_lock(params->snapshop_mutex);
