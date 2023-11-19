@@ -167,7 +167,7 @@ void *coordinator_thread(void *args)
             sem_post(params->chair_occupied);
             printf("C: Student %lu with priority %d added to the queue. Waiting students now = %d. Total requests = %d\n", (*params->arrived_student)->id, (*params->arrived_student)->help, waiting_students, total_requests);
         }
-        params->coordinator_thread_return = insert_success;
+        (*params->coordinator_thread_return) = insert_success;
         sem_post(params->coordinator_to_student);
     }
 };
@@ -228,7 +228,7 @@ void *student_thread(void *args)
             // int waiting_students = params->buffer->size - params->buffer->open_positions;
             // pthread_mutex_unlock(params->snapshop_mutex);
             // sem_post(params->chair_occupied);
-            printf("S: Student %lu takes a seat. Empty chairs = %d\n", st->id, params->buffer->open_positions);
+            printf("S: Student %lu takes a seat. Empty chairs = %d\n", st->id, empty_chairs);
             st->state = WAITING;
             while (st->state == WAITING)
             {
