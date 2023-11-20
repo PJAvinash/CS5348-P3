@@ -240,9 +240,6 @@ struct student_thread_params
 /*
  * Student Thread Function
  *
- * This function represents the behavior of a student in the Concurrent Student Management System.
- * Each student thread executes this function independently. The student creates a struct representing
- * themselves and enters a loop to request help until the maximum help limit is reached.
  *
  * In each iteration, the student tries to find an available chair by interacting with the coordinator.
  * If successful, the student takes a seat and enters a waiting state. After being tutored, the student
